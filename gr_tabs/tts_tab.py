@@ -1,6 +1,8 @@
 import os
 import re
 import random
+import tempfile
+import zipfile
 import gradio as gr
 import pandas as pd
 from lxml import etree
@@ -142,6 +144,29 @@ def get_files_list(ab_name):
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     return df
 
+def create_zip_archive(ab_path):
+    mp3_dir = os.path.join(data_path, ab_path, 'mp3')
+    if not os.path.exists(mp3_dir):
+        raise gr.Error(f"Папка с файлами не найдена!")
+    
+    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+        zip_filename = tmp.name
+    
+    try:
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(mp3_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = f'{ab_path}/{file}'
+                    zipf.write(file_path, arcname)
+        
+        return {"visible": True, "value": zip_filename,"__type__": "update"}
+    
+    except Exception as e:
+        if os.path.exists(zip_filename):
+            os.unlink(zip_filename)
+        raise gr.Error(f"Ошибка: {str(e)}")
+
 def enable_status():
     return {"visible": True, "__type__": "update"}
 
@@ -236,27 +261,43 @@ def tts_tab(ab_path, spk_list):
                 column_widths=['320px'],
             )
         del_btn = gr.Button("❌ Удалить файл", interactive=False)
-
-        df_output.select(
-            sel_file,
-            inputs=ab_path,
-            outputs=[del_btn, cur_file]
-        )
-        tts_button.click(
-            enable_status,
-            outputs=pr_status
-        ).then(
-            fn=tts,
-            inputs=[ab_path,repl,spk_sel,sp_rate,spk2_sel,sp_rate2,back_sound_sel,bitrate],
-            outputs=[df_output, pr_status],
-            show_progress_on=pr_status
+        create_arh_btn = gr.Button("Создать архив с АК")
+        download_btn = gr.DownloadButton(
+            "📥 Скачать архив с АК",
+            value=None,
+            variant="primary",
+            visible=False
         )
 
-        del_btn.click(
-            del_file,
-            inputs=[cur_file,ab_path],
-            outputs=[df_output]
-        )
+    download_btn.click(
+        fn=lambda: gr.DownloadButton(visible=False),
+        outputs=download_btn
+    )
+    create_arh_btn.click(
+        create_zip_archive,
+        inputs=ab_path,
+        outputs=download_btn
+    )
+    df_output.select(
+        sel_file,
+        inputs=ab_path,
+        outputs=[del_btn, cur_file]
+    )
+    tts_button.click(
+        enable_status,
+        outputs=pr_status
+    ).then(
+        fn=tts,
+        inputs=[ab_path,repl,spk_sel,sp_rate,spk2_sel,sp_rate2,back_sound_sel,bitrate],
+        outputs=[df_output, pr_status],
+        show_progress_on=pr_status
+    )
+
+    del_btn.click(
+        del_file,
+        inputs=[cur_file,ab_path],
+        outputs=[df_output]
+    )
 
     tts_tab.select(
         get_files_list,
