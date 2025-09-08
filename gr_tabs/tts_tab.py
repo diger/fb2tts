@@ -84,12 +84,12 @@ def tts(ab_path,repl,spk_sel,sch_r,spk2_sel,sch_r2,back_sound_sel,mp3_bitrate,pr
                     audio = effects.normalize(audio)
 
                 if line.tag == 'cite' and line.get('position') == 'start':
-                    pr_audio = AudioSegment.from_wav('sound/cite.wav')
+                    pr_audio = AudioSegment.from_wav('sound/pause/cite.wav')
                     pr_audio = effects.normalize(pr_audio)
                     audio = pr_audio + audio
                 if line.tag == 'empty-line':
                     #sl_audio = AudioSegment.silent(duration=1000)
-                    pr_audio = AudioSegment.from_wav('sound/empty.wav')
+                    pr_audio = AudioSegment.from_wav('sound/pause/empty.wav')
                     pr_audio = effects.normalize(pr_audio)
                     audio = pr_audio + audio
                 if (line.getprevious() is None and line.tag != 'title' and line.tag != 'empty-line' \
