@@ -58,8 +58,15 @@ def split(arr, size):
     arrs.append(arr)
     return arrs
 
+def stop_parse():
+    global stop_parsing
+    stop_parsing = True
+    return "Прерываем выполнение..."
+
 def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
 
+    global stop_parsing
+    stop_parsing = False
     df = pd.DataFrame(columns=["Name"])
     work_dir = os.path.join(data_path, ab_path)
     xml_path = os.path.join(work_dir, 'xml')
@@ -87,7 +94,13 @@ def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
     bt.text = preprocess(f'{first_name} {last_name}. {book_title}.')
 
     for i, elem in enumerate(progress.tqdm(root.findall("section"), desc="Обработка файлов")):
-    #for i, elem in enumerate(root.findall("section")):
+
+        if stop_parsing:
+            stop_parsing = False
+            fdf, ll = get_files_list(ab_path)
+            yield fdf, "Выполнение прервано пользователем"
+            return
+
         sec_title = elem.find('title')
 
         if elem.findall("section"):
@@ -184,7 +197,7 @@ def show_file_content(data: gr.SelectData, ab_path):
     
     try:
         with open(f'{xml_dir}/{data.value}', "r", encoding="utf-8") as f:
-            content = f.read()  # Читаем первые 2000 символов
+            content = f.read()
         return content, {"interactive": True, "__type__": "update"}, f'{xml_dir}/{data.value}'
     except Exception as e:
         return f"Ошибка: {str(e)}"
@@ -207,7 +220,7 @@ def get_files_list(ab_name):
 def del_file(filename, ab_name):
     gr.Info(f'Remove {os.path.basename(filename)}', duration=2)
     os.remove(filename)
-    return get_files_list(ab_name),''
+    return get_files_list(ab_name)
 
 def parse_tab(ab_path):
     with gr.Tab("Анализ", id=1) as pr_tab:
@@ -218,7 +231,8 @@ def parse_tab(ab_path):
             snd_ef = gr.Checkbox(label="Озвучить ППББ")
         with gr.Row():
             repl = gr.Checkbox(label="Переписать")
-            parse_button = gr.Button("Парсить FB2")
+            parse_button = gr.Button("▶ Парсить FB2")
+            stop_btn = gr.Button("🚫 Прервать")
         with gr.Row():
             cur_file = gr.State()
             pr_status= gr.Textbox(show_label=False, visible=False)
@@ -249,6 +263,11 @@ def parse_tab(ab_path):
             inputs=[ab_path,repl,multilang],
             outputs=[df_output, pr_status],
             show_progress_on=pr_status
+        )
+        stop_btn.click(
+            stop_parse,
+            outputs=pr_status,
+            queue=False
         )
         df_output.select(
             fn=show_file_content,

@@ -20,13 +20,15 @@ def tts(ab_path,repl,spk_sel,sch_r,spk2_sel,sch_r2,back_sound_sel,mp3_bitrate,pr
     if not os.path.exists(mp3_path) and mp3_path is not None:
         os.makedirs(mp3_path)
 
+    global stop_text_to_sp
+    stop_text_to_sp = False
     args = lambda: None
     args.debug = 0
 
     files = os.listdir(xml_path)
     files=[x.split('.')[0] for x in files]
     for file in sorted(files, key=float):
-        if os.path.exists(f'{xml_path}/{file}.mp3') and not repl:
+        if os.path.exists(f'{mp3_path}/{file}.mp3') and not repl:
             gr.Warning(f'{file}.mp3 уже есть', duration=3)
         else:
 
@@ -41,6 +43,10 @@ def tts(ab_path,repl,spk_sel,sch_r,spk2_sel,sch_r2,back_sound_sel,mp3_bitrate,pr
                 default_speaker = 2
 
             for i, line in enumerate(progress.tqdm(root, desc=f"Обработка файла {file}.xml")):
+                if stop_text_to_sp:
+                    stop_text_to_sp = False
+                    yield get_files_list(ab_path), "Выполнение прервано пользователем"
+                    return
                 use_speaker = spk_sel
                 speech_rate = sch_r
                 ntree = etree.Element('speak')
@@ -183,6 +189,11 @@ def sel_file(data: gr.SelectData, ab_path):
     mp3_dir = os.path.join(data_path, ab_path, 'mp3')
     return {"interactive": True, "__type__": "update"}, f'{mp3_dir}/{data.value}'
 
+def stop_tts():
+    global stop_text_to_sp
+    stop_text_to_sp = True
+    return "Прерываем выполнение..."
+
 def tts_tab(ab_path, spk_list):
     with gr.Tab(label = "Создать АК", id=2) as tts_tab:
         with gr.Row():
@@ -250,6 +261,7 @@ def tts_tab(ab_path, spk_list):
         with gr.Row():
             repl = gr.Checkbox(label="Переписать")
             tts_button = gr.Button("🟢 Vosk TTS")
+            stop_btn = gr.Button("🚫 Прервать")
         with gr.Row():
             cur_file = gr.State()
             pr_status= gr.Textbox(show_label=False, visible=False)
@@ -291,6 +303,11 @@ def tts_tab(ab_path, spk_list):
         inputs=[ab_path,repl,spk_sel,sp_rate,spk2_sel,sp_rate2,back_sound_sel,bitrate],
         outputs=[df_output, pr_status],
         show_progress_on=pr_status
+    )
+    stop_btn.click(
+        stop_tts,
+        outputs=pr_status,
+        queue=False
     )
 
     del_btn.click(
