@@ -5,65 +5,15 @@ import gradio as gr
 import pandas as pd
 from lxml import etree
 from libs.utils import now_dir,data_path,get_ab_name,set_args
-from libs.tts_preprocessor import preprocess,sound_check,garbage
-from libs.fix_fb2 import adopt_for_parse
-import pymorphy3
-
-morph = pymorphy3.MorphAnalyzer()
-
-def parse_section(tags):
-
-    p = etree.Element('line')
-
-    if tags.text and tags.get('lang') is None:
-        sndml = sound_check(tags.text)
-        if sndml:
-            sndml = etree.fromstring(sndml)
-            for tt in sndml:
-                if tt.text or tt.tag == 'sound':
-                    p.append(tt)
-        else:
-            tags.text = preprocess(tags.text)
-            p.append(tags)
-    else:
-        p.append(tags)
-    return p
-
-def male_fem(tags):
-    male = 0
-    female = 0
-    if tags.text:
-        cl_text = garbage(tags.text)
-        cl_text = re.sub( ',|\!|\?|\.', ' ', cl_text)
-        for item in cl_text.split(' '):
-            ch_word = item.strip()
-            p = morph.parse(ch_word)[0]
-            if p.tag.POS == 'VERB' and p.tag.tense == 'past':
-                if p.tag.gender == 'masc':
-                    male += 1
-                elif p.tag.gender == 'femn':
-                    female += 1
-    if male > female:
-        return 1
-    if male < female:
-        return -1
-    return 0
-
-def split(arr, size):
-    arrs = []
-    while len(arr) > size:
-        pice = arr[:size]
-        arrs.append(pice)
-        arr   = arr[size:]
-    arrs.append(arr)
-    return arrs
+from libs.tts_preprocessor import preprocess
+from libs.fix_fb2 import adopt_for_parse,parse_section,split
 
 def stop_parse():
     global stop_parsing
     stop_parsing = True
     return "Прерываем выполнение..."
 
-def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
+def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
 
     global stop_parsing
     stop_parsing = False
@@ -80,6 +30,8 @@ def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
     args.debug = 0
     args.replace = repl
     args.tag = None
+    args.gender = gender
+    args.snd_ef = snd_ef
     set_args(args)
 
     title = 1
@@ -125,15 +77,15 @@ def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
                     else:
                         txt_male = 0
                         for tags in sect:
-                            txt_male = txt_male + male_fem(tags)
                             if tags.tag == 'title' and s_title == 1 and sec_title is not None:
                                 tags.text = sec_title.text + '. ' + tags.text
-                            for ts in parse_section(tags):
+                            for ts in parse_section(tags,args):
+                                if (gnd := ts.get('gender')) is not None:
+                                    txt_male = txt_male + int(gnd)
                                 ntree.append(ts)
-                                if args.debug == 2: etree.dump(ts)
-                        if txt_male >= 0:
-                            ntree.set('gender','masc')
-                        else:
+                                if args.debug == '1': etree.dump(ts)
+                        ntree.set('gender','masc')
+                        if txt_male < 0:
                             ntree.set('gender','femn')
                         tree = etree.ElementTree(ntree)
                         tree.write(f'{xml_path}/{title}_{s_title}.xml', encoding='utf-8', pretty_print=True)
@@ -157,13 +109,13 @@ def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
                 else:
                     txt_male = 0
                     for tags in elem:
-                        txt_male = txt_male + male_fem(tags)
-                        for ts in parse_section(tags):
+                        for ts in parse_section(tags,args):
+                            if (gnd := ts.get('gender')) is not None:
+                                txt_male = txt_male + int(gnd)
                             ntree.append(ts)
-                            if args.debug == 'all': etree.dump(ts)
-                    if txt_male >= 0:
-                        ntree.set('gender','masc')
-                    else:
+                            if args.debug == '1': etree.dump(ts)
+                    ntree.set('gender','masc')
+                    if txt_male < 0:
                         ntree.set('gender','femn')
                     ntree = etree.ElementTree(ntree)
                     ntree.write(f'{xml_path}/{title}.xml', encoding='utf-8', pretty_print=True)
@@ -174,7 +126,6 @@ def parse_fb2(ab_path, repl, mltlg, progress=gr.Progress()):
             title += 1
         yield df, ''
 
-    progress(1, desc="Всё причесали!")
     return df, gr.Label(visible=False)
 
 def enable_status():
@@ -184,7 +135,6 @@ def save_xml(content, filename):
     if not content:
         gr.Warning("Ошибка: содержимое пустое", duration=5)
     try:
-        # Проверяем, что XML корректен перед сохранением
         etree.fromstring(content)
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -225,10 +175,10 @@ def del_file(filename, ab_name):
 def parse_tab(ab_path):
     with gr.Tab("Анализ", id=1) as pr_tab:
         with gr.Row():
-            profanity = gr.Checkbox(label="Запикать мат")
+            snd_ef = gr.Checkbox(label="Озвучить события", value=True)
             gender = gr.Checkbox(label="Определение пола")
             multilang = gr.Checkbox(label="Несколько языков", interactive=False)
-            snd_ef = gr.Checkbox(label="Озвучить ППББ")
+            profanity = gr.Checkbox(label="Запикать мат", interactive=False)
         with gr.Row():
             repl = gr.Checkbox(label="Переписать")
             parse_button = gr.Button("▶ Парсить FB2")
@@ -260,7 +210,7 @@ def parse_tab(ab_path):
             outputs=pr_status
         ).then(
             fn=parse_fb2,
-            inputs=[ab_path,repl,multilang],
+            inputs=[ab_path,repl,multilang,gender,snd_ef],
             outputs=[df_output, pr_status],
             show_progress_on=pr_status
         )

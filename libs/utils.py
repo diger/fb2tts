@@ -33,6 +33,7 @@ with open('dict/num_dict.json', 'r') as fl:
 args=''
 
 def load_vosk_model():
+    #return lambda: None
     local_folder = "model"
     vosk_path = 'model/vosk-model-tts-ru-0.10-multi'
     os.makedirs(local_folder, exist_ok=True)
@@ -44,7 +45,7 @@ def load_vosk_model():
         zip_content = BytesIO(response.content)
         with zipfile.ZipFile(zip_content, 'r') as zip_ref:
             zip_ref.extractall(local_folder)
-    model = Model(model_path='model/vosk-model-tts-ru-0.10-multi', model_name="vosk-model-tts-ru-0.9-multi")
+    model = Model(model_path=vosk_path, model_name="vosk-model-tts-ru-0.9-multi")
     return Synth(model)
 
 def set_args(s_args):

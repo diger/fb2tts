@@ -1,8 +1,14 @@
 import os
 import re
 import base64
+import pymorphy3
+
 from lxml import etree
-from libs.utils import add_text_cover
+from libs.utils import add_text_cover, word_dict
+from libs.tts_preprocessor import preprocess
+
+morph = pymorphy3.MorphAnalyzer()
+list_of_snd = word_dict['list_of_snd']
 
 def split(arr, size):
     arrs = []
@@ -12,6 +18,59 @@ def split(arr, size):
         arr   = arr[size:]
     arrs.append(arr)
     return arrs
+
+def parse_section(tags,args):
+    p = etree.Element('line')
+    gnd = 0
+    if tags.text and tags.get('lang') is None:
+        if args.snd_ef and (sndml := sound_check(tags.text)):
+            for tt in etree.fromstring(sndml):
+                if tt.text or tt.tag == 'sound':
+                    p.append(tt)
+        else:
+            tags.text = preprocess(tags.text)
+            p.append(tags)
+    elif args.gender:
+        p.set('gender', f'{male_fem(tags)}')
+    else:
+        p.append(tags)
+    if args.debug == 2: etree.dump(tags)
+    return p
+
+def male_fem(tags):
+    male = 0
+    female = 0
+    if tags.text:
+        cl_text = garbage(tags.text)
+        cl_text = re.sub( ',|\!|\?|\.', ' ', cl_text)
+        for item in cl_text.split(' '):
+            ch_word = item.strip()
+            p = morph.parse(ch_word)[0]
+            if p.tag.POS == 'VERB' and p.tag.tense == 'past':
+                if p.tag.gender == 'masc':
+                    male += 1
+                elif p.tag.gender == 'femn':
+                    female += 1
+    if male >= female:
+        return 1
+    else:
+        return -1
+
+def sound_check(string):
+    snd =  '|'.join(list_of_snd.keys())
+    x = re.findall(rf'\b({snd})', string)
+    if len(x) >=1:
+        out_string = '<snd><p>'
+        string = re.sub(rf'\b({snd})(\W+|\W)', r'\1 ', string)
+        for word in string.split():
+            if list_of_snd.get(word):
+                out_string = out_string + f'</p><sound val="{list_of_snd[word]}"/><p>'
+            else:
+                out_string = out_string + preprocess(word) + ' '
+        out_string = out_string + '</p></snd>'
+        return out_string
+
+    return False
 
 def lang_check(string):
     lang = 'ru'

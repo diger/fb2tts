@@ -8,7 +8,6 @@ accentizer.load(omograph_model_size='big_poetry', use_dictionary=True, device=de
 args = get_args()
 cust_dict = word_dict['cust_dict']
 exc_abrs = word_dict['exc_abrs']
-list_of_snd = word_dict['list_of_snd']
 
 alphabet_map = {
     "А": "А",
@@ -87,22 +86,6 @@ def match_mapping(char):
             return alphabet_map[char]
 
     return char
-
-def sound_check(string):
-    snd =  '|'.join(list_of_snd.keys())
-    x = re.findall(rf'\b({snd})', string)
-    if len(x) >=1:
-        out_string = '<snd><p>'
-        string = re.sub(rf'\b({snd})(\W+|\W)', r'\1 ', string)
-        for word in string.split():
-            if list_of_snd.get(word):
-                out_string = out_string + f'</p><sound val="{list_of_snd[word]}"/><p>'
-            else:
-                out_string = out_string + preprocess(word) + ' '
-        out_string = out_string + '</p></snd>'
-        return out_string
-
-    return False
 
 def len_check(string):
     out = []
