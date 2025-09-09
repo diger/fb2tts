@@ -67,7 +67,7 @@ def tts(ab_path,repl,spk_sel,sch_r,spk2_sel,sch_r2,back_sound_sel,mp3_bitrate,pr
                 
                 audio = AudioSegment.empty()
                 if line.tag == 'sound':
-                    audio = AudioSegment.from_wav(f'sound/{line.get("val")}.wav')
+                    audio = AudioSegment.from_wav(f'sound/events/{line.get("val")}.wav')
                     audio = effects.normalize(audio)
                 if line.tag == 'break':
                     slt = int(line.get('time')) * 100
