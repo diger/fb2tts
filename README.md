@@ -15,5 +15,6 @@
 ![Parse](../../../diger.github.io/blob/master/screenshots/parse.png?raw=true)
 
 
+[![Здесь примеры озвученных глав из fb2](https://github.com/diger/fb2tts/blob/main/libs/cover.jpg?raw=true&s=128)](https://samply.app/p/91gE5HaCzuzVQ7yshvyq)
 
 
