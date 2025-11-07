@@ -58,7 +58,7 @@ def get_args():
 
 def convert(seconds):
     min, sec = divmod(seconds, 60)
-    min = f'{int(min)} m. ' if min else None
+    min = f'{int(min)} m. ' if min else ''
     sec = f'{int(sec)} s.'
 
     return min + sec
