@@ -5,7 +5,7 @@ import gradio as gr
 import pandas as pd
 from lxml import etree
 from libs.utils import now_dir,data_path,get_ab_name,set_args
-from libs.tts_preprocessor import preprocess
+from libs.tts_preprocessor import TextParse
 from libs.fix_fb2 import adopt_for_parse,parse_section,split
 
 def stop_parse():
@@ -13,7 +13,7 @@ def stop_parse():
     stop_parsing = True
     return "Прерываем выполнение..."
 
-def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
+def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, progress=gr.Progress()):
 
     global stop_parsing
     stop_parsing = False
@@ -30,9 +30,12 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
     args.debug = 0
     args.replace = repl
     args.tag = None
+    args.accent = accent
     args.gender = gender
     args.snd_ef = snd_ef
     set_args(args)
+
+    parser = TextParse()
 
     title = 1
     desc = adopt_for_parse(args)
@@ -43,7 +46,7 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
     last_name = desc['last_name']
     book_title = desc['book_title']
     bt = etree.Element('p')
-    bt.text = preprocess(f'{first_name} {last_name}. {book_title}.')
+    bt.text = parser.preprocess(f'{first_name} {last_name}. {book_title}.')
 
     for i, elem in enumerate(progress.tqdm(root.findall("section"), desc="Обработка файлов")):
 
@@ -67,10 +70,10 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
                         if annotation is not None:
                             for txt in annotation:
                                 ann = etree.Element('p')
-                                ann.text = preprocess(txt.text)
+                                ann.text = parser.preprocess(txt.text)
                                 ntree.append(ann)
                     if s_title == 1 and sec_title is not None and sect.find('title') is None:
-                        sec_title.text = preprocess(sec_title.text)
+                        sec_title.text = parser.preprocess(sec_title.text)
                         ntree.append(sec_title)                    
                     if os.path.exists(f'{xml_path}/{title}_{s_title}.xml') and not args.replace:
                         print(f'{title}_{s_title}.xml File exist!')
@@ -101,7 +104,7 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
                         if annotation is not None:
                             for txt in annotation.findall("p"):
                                 ann = etree.Element('p')
-                                ann.text = preprocess(txt.text)
+                                ann.text = parser.preprocess(txt.text)
                                 ntree.append(ann)
                 
                 if os.path.exists(f'{xml_path}/{title}.xml') and not args.replace:
@@ -130,6 +133,9 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, progress=gr.Progress()):
 
 def enable_status():
     return {"visible": True, "__type__": "update"}
+
+def change_acc_model():
+    return {"interactive": True, "__type__": "update", "value": True}
 
 def save_xml(content, filename):
     if not content:
@@ -172,7 +178,7 @@ def del_file(filename, ab_name):
     os.remove(filename)
     return get_files_list(ab_name)
 
-def parse_tab(ab_path):
+def parse_tab(ab_path,acc_state):
     with gr.Tab("Анализ", id=1) as pr_tab:
         with gr.Row():
             snd_ef = gr.Checkbox(label="Озвучить события", value=True)
@@ -180,6 +186,7 @@ def parse_tab(ab_path):
             multilang = gr.Checkbox(label="Несколько языков", interactive=False)
             profanity = gr.Checkbox(label="Запикать мат", interactive=False)
         with gr.Row():
+            accent = gr.Checkbox(label="Расставить ударения", interactive=False)
             repl = gr.Checkbox(label="Переписать")
             parse_button = gr.Button("▶ Парсить FB2")
             stop_btn = gr.Button("🚫 Прервать")
@@ -210,7 +217,7 @@ def parse_tab(ab_path):
             outputs=pr_status
         ).then(
             fn=parse_fb2,
-            inputs=[ab_path,repl,multilang,gender,snd_ef],
+            inputs=[ab_path,repl,multilang,gender,snd_ef,accent],
             outputs=[df_output, pr_status],
             show_progress_on=pr_status
         )
@@ -239,4 +246,8 @@ def parse_tab(ab_path):
         get_files_list,
         inputs=ab_path,
         outputs=[df_output,file_content]
+    )
+    acc_state.change(
+        change_acc_model,
+        outputs=accent
     )

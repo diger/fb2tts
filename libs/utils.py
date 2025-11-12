@@ -1,21 +1,22 @@
 import os
 import re
 import json
+import urllib.request
+import torch
+import numpy as np
+from io import BytesIO
 from vosk_tts import Model, Synth
+from silero import silero_tts
 from ruaccent import RUAccent
+from silero_stress import load_accentor
 from PIL import Image, ImageDraw, ImageFont
 
 device = 'CPU'
-try:
-    import torch
-    if torch.cuda.is_available():
-        device = 'CUDA'
-except ModuleNotFoundError as err:
-    print(err)
+
+if torch.cuda.is_available():
+    device = 'CUDA'
 
 print(f'Run with {device}')
-
-accentizer = RUAccent()
 
 now_dir = os.getcwd()
 data_path = os.path.join(now_dir, "data")
@@ -32,21 +33,83 @@ with open('dict/num_dict.json', 'r') as fl:
 
 args=''
 
-def load_vosk_model():
-    #return lambda: None
-    local_folder = "model"
-    vosk_path = 'model/vosk-model-tts-ru-0.10-multi'
-    os.makedirs(local_folder, exist_ok=True)
-    if not os.path.exists(f'{now_dir}/{vosk_path}'):
-        print('Download vosk-model 0.10')
-        model_url = "https://alphacephei.com/vosk/models/vosk-model-tts-ru-0.10-multi.zip"
-        response = requests.get(model_url, stream=True)
-        response.raise_for_status()
-        zip_content = BytesIO(response.content)
-        with zipfile.ZipFile(zip_content, 'r') as zip_ref:
-            zip_ref.extractall(local_folder)
-    model = Model(model_path=vosk_path, model_name="vosk-model-tts-ru-0.9-multi")
-    return Synth(model)
+class TTSModel:
+    def __init__(self):
+        self.model = None
+        self.ver = None
+
+    def load(self, ver):
+        local_folder = "models"
+        os.makedirs(local_folder, exist_ok=True)
+        self.ver = ver
+        if ver == 5:
+            silero_pt = 'v5_ru.pt'
+            silero_directory = 'models/silero'
+            silero_filepath = os.path.join(now_dir, silero_directory, silero_pt)
+            if not os.path.isfile(silero_filepath):
+                os.makedirs(silero_directory, exist_ok=True)
+                print(f'Download silero model v5')
+                model_url = "https://models.silero.ai/models/tts/ru/v5_ru.pt"
+                urllib.request.urlretrieve(model_url,silero_filepath)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.model = torch.package.PackageImporter(silero_filepath).load_pickle("tts_models", "model")
+            self.model.to(device)
+        else:
+            vosk_path = f'models/vosk-model-tts-ru-0.{ver}-multi'
+            os.makedirs(local_folder, exist_ok=True)
+            if not os.path.exists(f'{now_dir}/{vosk_path}'):
+                print(f'Download vosk-model 0.{ver}')
+                model_url = f"https://alphacephei.com/vosk/models/vosk-model-tts-ru-0.{ver}-multi.zip"
+                with urllib.request.urlopen(model_url) as response:
+                    zip_content = BytesIO(response.read())
+                with zipfile.ZipFile(zip_content, 'r') as zip_ref:
+                    zip_ref.extractall(local_folder)
+            self.model = Model(model_path=vosk_path, model_name="vosk-model-tts-ru-0.9-multi")
+    
+    def synth_audio(self, text, speaker_id, rate):
+        if self.ver == 5:
+            np_audio = self.model.apply_tts(text,
+                                              speaker=speaker_id,
+                                              sample_rate=48000)
+            np_audio = np_audio.detach().numpy()
+            np_audio = (np_audio * 32767).astype(np.int16)
+            return np_audio,48000
+        else:
+            return Synth(model).synth_audio(text, speaker_id=speaker_id),22050
+
+
+
+synth = TTSModel()
+
+def load_accent_model(ver=1):
+    if ver == 1:
+        accentizer = RUAccent()
+        accentizer.load(
+            omograph_model_size='big_poetry',
+            use_dictionary=True,
+            device=device,
+            workdir="./models"
+        )
+        return accentizer
+    else:
+        class Accent:
+            def __init__(self):
+                self.accentizer = load_accentor()
+            
+            def process_all(self, text, params=None):
+                return self.accentizer(text)
+        return Accent()
+
+def get_spk_list(ver=10):
+    spk_list = []
+    if ver == 5:
+        spk_list = ['aidar', 'baya', 'kseniya', 'xenia', 'eugene']
+    else:
+        with open(f'models/vosk-model-tts-ru-0.{ver}-multi/config.json', 'r') as file:
+            data = json.load(file)
+        for i in data['speaker_id_map']:
+            spk_list.append((i,data['speaker_id_map'][i]))
+    return spk_list
 
 def set_args(s_args):
     global args

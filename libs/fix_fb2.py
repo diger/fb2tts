@@ -5,10 +5,11 @@ import pymorphy3
 
 from lxml import etree
 from libs.utils import add_text_cover, word_dict
-from libs.tts_preprocessor import preprocess
+from libs.tts_preprocessor import TextParse
 
 morph = pymorphy3.MorphAnalyzer()
 list_of_snd = word_dict['list_of_snd']
+parser = TextParse()
 
 def split(arr, size):
     arrs = []
@@ -28,7 +29,7 @@ def parse_section(tags,args):
                 if tt.text or tt.tag == 'sound':
                     p.append(tt)
         else:
-            tags.text = preprocess(tags.text)
+            tags.text = parser.preprocess(tags.text)
             p.append(tags)
     elif args.gender:
         p.set('gender', f'{male_fem(tags)}')
@@ -66,7 +67,7 @@ def sound_check(string):
             if list_of_snd.get(word):
                 out_string = out_string + f'</p><sound val="{list_of_snd[word]}"/><p>'
             else:
-                out_string = out_string + preprocess(word) + ' '
+                out_string = out_string + parser.preprocess(word) + ' '
         out_string = out_string + '</p></snd>'
         return out_string
 

@@ -6,14 +6,18 @@ import zipfile
 import gradio as gr
 import pandas as pd
 from lxml import etree
+import concurrent.futures
+import threading
+from functools import partial
 from pydub import effects, AudioSegment
-from libs.utils import load_vosk_model, convert
+from libs.utils import get_spk_list, convert, synth
 
 now_dir = os.getcwd()
 data_path = os.path.join(now_dir, "data")
-synth = load_vosk_model()
 
-def tts(ab_path,repl,spk_sel,sch_r,spk2_sel,sch_r2,back_sound_sel,mp3_bitrate,progress=gr.Progress()):
+stop_text_to_sp = False
+
+def tts(ab_path, repl, spk_sel, sch_r, spk2_sel, sch_r2, back_sound_sel, mp3_bitrate, progress=gr.Progress()):
     work_dir = os.path.join(data_path, ab_path)
     xml_path = os.path.join(work_dir, 'xml')
     mp3_path = os.path.join(work_dir, 'mp3')
@@ -26,108 +30,174 @@ def tts(ab_path,repl,spk_sel,sch_r,spk2_sel,sch_r2,back_sound_sel,mp3_bitrate,pr
     args.debug = 0
 
     files = os.listdir(xml_path)
-    files=[x.split('.')[0] for x in files]
-    for file in sorted(files, key=float):
+    files = [x.split('.')[0] for x in files]
+    
+    for file in progress.tqdm(sorted(files, key=float), desc="Обработка файлов"):
         if os.path.exists(f'{mp3_path}/{file}.mp3') and not repl:
             gr.Warning(f'{file}.mp3 уже есть', duration=3)
-        else:
+            continue
 
-            root = etree.parse(f'{xml_path}/{file}.xml').getroot()
-            out_audio = AudioSegment.empty()
-            autor = root.get('autor')
-            album = root.get('album')
-            gender = root.get('gender')
-            default_speaker = spk_sel
-            sub_speaker = 3
-            if gender and gender == 'femn':
-                default_speaker = 2
+        root = etree.parse(f'{xml_path}/{file}.xml').getroot()
+        out_audio = AudioSegment.empty()
+        autor = root.get('autor')
+        album = root.get('album')
+        gender = root.get('gender')
+        default_speaker = spk_sel
+        sub_speaker = 3
+        if gender and gender == 'femn':
+            default_speaker = 2
 
-            for i, line in enumerate(progress.tqdm(root, desc=f"Обработка файла {file}.xml")):
-                if stop_text_to_sp:
-                    stop_text_to_sp = False
-                    yield get_files_list(ab_path), "Выполнение прервано пользователем"
-                    return
-                use_speaker = spk_sel
-                speech_rate = sch_r
-                ntree = etree.Element('speak')
+        tasks = []
+        lines_list = list(root)
+        
+        for i, line in enumerate(lines_list):
+            if stop_text_to_sp:
+                stop_text_to_sp = False
+                yield get_files_list(ab_path), "Выполнение прервано пользователем"
+                return
+            
+            use_speaker = spk_sel
+            speech_rate = sch_r
+            ntree = etree.Element('speak')
+            pros = etree.Element('prosody')
+            
+            if line.tag == 'cite' or line.tag == 'title':
                 pros = etree.Element('prosody')
-                if line.tag == 'cite' or line.tag == 'title':
-                     pros = etree.Element('prosody')
-                     pros.text = line.text
-                     ntree.append(pros)
-                elif line.text:
-                     pros.text = line.text
-                     ntree.append(pros)
-                else:
-                     ntree.append(line)
+                pros.text = line.text
+                ntree.append(pros)
+            elif line.text:
+                pros.text = line.text
+                ntree.append(pros)
+            else:
+                ntree.append(line)
 
-                if line.tag == 'cite':
-                    use_speaker = spk2_sel
-                    sch_r = sch_r2
+            if line.tag == 'cite':
+                use_speaker = spk2_sel
+                speech_rate = sch_r2
+            
+            # Для звуковых файлов и пауз - синхронная обработка
+            if line.tag == 'sound':
+                audio = AudioSegment.from_wav(f'sound/events/{line.get("val")}.wav')
+                audio = effects.normalize(audio)
+                tasks.append(('audio', audio, line))
+            elif line.tag == 'break':
+                slt = int(line.get('time')) * 100
+                audio = AudioSegment.silent(duration=slt)
+                tasks.append(('audio', audio, line))
+            elif line.text:
+                tasks.append(('text', line.text, use_speaker, speech_rate, line))
+            else:
+                tasks.append(('empty', None, None, None, line))
+
+        processed_audio_segments = [None] * len(tasks)
+        
+        def process_text_task(index, text, speaker, rate):
+            if stop_text_to_sp:
+                return None
                 
-                audio = AudioSegment.empty()
-                if line.tag == 'sound':
-                    audio = AudioSegment.from_wav(f'sound/events/{line.get("val")}.wav')
-                    audio = effects.normalize(audio)
-                if line.tag == 'break':
-                    slt = int(line.get('time')) * 100
-                    audio = AudioSegment.silent(duration=slt)
-                elif line.text:
-                    if args.debug != 0 and line.text:
-                        print(line.text)
-                    
-                    np_audio = synth.synth_audio(
-                        line.text,
-                        speaker_id=use_speaker,
-                        speech_rate=speech_rate
-                    )
-                    audio = AudioSegment(
-                        np_audio.tobytes(),
-                        frame_rate=22050,
-                        sample_width=2,
-                        channels=1
-                    )
-                    audio = effects.normalize(audio)
-
-                if line.tag == 'cite' and line.get('position') == 'start':
-                    pr_audio = AudioSegment.from_wav('sound/pause/cite.wav')
-                    pr_audio = effects.normalize(pr_audio)
-                    audio = pr_audio + audio
-                if line.tag == 'empty-line':
-                    #sl_audio = AudioSegment.silent(duration=1000)
-                    pr_audio = AudioSegment.from_wav('sound/pause/empty.wav')
-                    pr_audio = effects.normalize(pr_audio)
-                    audio = pr_audio + audio
-                if (line.getprevious() is None and line.tag != 'title' and line.tag != 'empty-line' \
-                    and line.tag != 'sound' and line.tag != 'break' and back_sound_sel) \
-                    or (line.tag == 'title' and back_sound_sel):
-                    pr_audio = AudioSegment.from_wav(f'sound/back/{back_sound_sel}')
-                    duration = pr_audio.duration_seconds
-                    kk = duration // 12
-                    st_poz = random.randint(0, kk) * 1000
-                    pr_audio = pr_audio[st_poz:st_poz + 12000]
-                    pr_audio = pr_audio.fade_out(4000)
-                    pr_audio = pr_audio.fade_in(4000)
-                    pr_audio = pr_audio - 5
-                    audio = pr_audio.overlay(audio, position=4000, gain_during_overlay=-6.0)
-                
-                out_audio = out_audio + audio
-
-               # yield None, None
-
-            out_audio.export(
-                f'{mp3_path}/{file}.mp3',
-                format='mp3',
-                bitrate=f'{mp3_bitrate}',
-                cover=f'{work_dir}/cover.jpg',
-                tags={
-                    'artist': autor,
-                    'title': f'Глава {file}',
-                    'track': f'{file}',
-                    'album': album
-                }
+            if args.debug != 0 and text:
+                print(text)
+            
+            np_audio, sr = synth.synth_audio(
+                text,
+                speaker,
+                rate
             )
-            yield get_files_list(ab_path), ''
+            audio = AudioSegment(
+                np_audio.tobytes(),
+                frame_rate=sr,
+                sample_width=2,
+                channels=1
+            )
+            return index, effects.normalize(audio)
+
+        text_tasks = [(i, task[1], task[2], task[3]) for i, task in enumerate(tasks) if task[0] == 'text']
+        
+        if text_tasks:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                future_to_index = {
+                    executor.submit(process_text_task, i, text, speaker, rate): i 
+                    for i, text, speaker, rate in text_tasks
+                }
+                
+                completed = 0
+                total_text_tasks = len(text_tasks)
+                
+                for future in progress.tqdm(concurrent.futures.as_completed(future_to_index), 
+                                          total=total_text_tasks, 
+                                          desc=f"Синтез аудио {file}.xml"):
+                    if stop_text_to_sp:
+                        executor.shutdown(wait=False)
+                        stop_text_to_sp = False
+                        yield get_files_list(ab_path), "Выполнение прервано пользователем"
+                        return
+                        
+                    try:
+                        result = future.result()
+                        if result:
+                            index, audio = result
+                            processed_audio_segments[index] = audio
+                        completed += 1
+                    except Exception as e:
+                        print(f"Ошибка при обработке аудио: {e}")
+                        completed += 1
+
+        for i, task in enumerate(progress.tqdm(tasks, desc=f"Сборка аудио {file}.xml")):
+            if stop_text_to_sp:
+                stop_text_to_sp = False
+                yield get_files_list(ab_path), "Выполнение прервано пользователем"
+                return
+                
+            line = task[-1]
+            
+            if task[0] == 'audio':
+                audio = task[1]
+            elif task[0] == 'text':
+                audio = processed_audio_segments[i]
+                if audio is None:
+                    continue
+            else:
+                continue
+
+            if line.tag == 'cite' and line.get('position') == 'start':
+                pr_audio = AudioSegment.from_wav('sound/pause/cite.wav')
+                pr_audio = effects.normalize(pr_audio)
+                audio = pr_audio + audio
+                
+            if line.tag == 'empty-line':
+                pr_audio = AudioSegment.from_wav('sound/pause/empty.wav')
+                pr_audio = effects.normalize(pr_audio)
+                audio = pr_audio + audio
+                
+            if (line.getprevious() is None and line.tag != 'title' and line.tag != 'empty-line' \
+                and line.tag != 'sound' and line.tag != 'break' and back_sound_sel) \
+                or (line.tag == 'title' and back_sound_sel):
+                pr_audio = AudioSegment.from_wav(f'sound/back/{back_sound_sel}')
+                duration = pr_audio.duration_seconds
+                kk = duration // 12
+                st_poz = random.randint(0, kk) * 1000
+                pr_audio = pr_audio[st_poz:st_poz + 12000]
+                pr_audio = pr_audio.fade_out(4000)
+                pr_audio = pr_audio.fade_in(4000)
+                pr_audio = pr_audio - 5
+                audio = pr_audio.overlay(audio, position=4000, gain_during_overlay=-6.0)
+            
+            out_audio = out_audio + audio
+
+        out_audio.export(
+            f'{mp3_path}/{file}.mp3',
+            format='mp3',
+            bitrate=f'{mp3_bitrate}',
+            cover=f'{work_dir}/cover.jpg',
+            tags={
+                'artist': autor,
+                'title': f'Глава {file}',
+                'track': f'{file}',
+                'album': album
+            }
+        )
+        yield get_files_list(ab_path), f'Обработан файл: {file}.xml'
+    
     return get_files_list(ab_path), gr.Label(visible=False)
 
 def get_files_list(ab_name):
@@ -194,13 +264,23 @@ def stop_tts():
     stop_text_to_sp = True
     return "Прерываем выполнение..."
 
-def tts_tab(ab_path, spk_list):
+def change_tts_model(mver):
+    sp_list = get_spk_list(mver)
+    speaker = sp_list[0]
+    if isinstance(speaker, tuple):
+        speaker = sp_list[0][1]
+    return (
+        {"value": speaker, "choices": sp_list, "__type__": "update"},
+        {"value": speaker, "choices": sp_list, "__type__": "update"}
+    )
+
+def tts_tab(ab_path, tts_state):
     with gr.Tab(label = "Создать АК", id=2) as tts_tab:
         with gr.Row():
             spk_sel = gr.Dropdown(
-                    value=0,
+                    value='',
                     label='Выбрать основной голос',
-                    choices=spk_list,
+                    choices=[''],
                     interactive=True,
                 )
             sp_rate = gr.Slider(
@@ -221,9 +301,9 @@ def tts_tab(ab_path, spk_list):
             )
         with gr.Row():
             spk2_sel = gr.Dropdown(
-                    value=0,
+                    value='',
                     label='Выбрать голос для цитат',
-                    choices=spk_list,
+                    choices=[''],
                     interactive=True,
                 )
             sp_rate2 = gr.Slider(
@@ -260,7 +340,7 @@ def tts_tab(ab_path, spk_list):
             )
         with gr.Row():
             repl = gr.Checkbox(label="Переписать")
-            tts_button = gr.Button("🟢 Vosk TTS")
+            tts_button = gr.Button("🟢 TTS")
             stop_btn = gr.Button("🚫 Прервать")
         with gr.Row():
             cur_file = gr.State()
@@ -309,13 +389,11 @@ def tts_tab(ab_path, spk_list):
         outputs=pr_status,
         queue=False
     )
-
     del_btn.click(
         del_file,
         inputs=[cur_file,ab_path],
         outputs=[df_output]
     )
-
     tts_tab.select(
         get_files_list,
         inputs=ab_path,
@@ -323,4 +401,9 @@ def tts_tab(ab_path, spk_list):
     ).then(
         snd_list,
         outputs=back_sound_sel
+    )
+    tts_state.change(
+        change_tts_model,
+        inputs=tts_state,
+        outputs=[spk_sel,spk2_sel]
     )
