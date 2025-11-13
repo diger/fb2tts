@@ -2,13 +2,13 @@ import os
 import re
 import json
 import urllib.request
+import zipfile
 import torch
 import numpy as np
 from io import BytesIO
 from vosk_tts import Model, Synth
 from silero import silero_tts
 from ruaccent import RUAccent
-from silero_stress import load_accentor
 from PIL import Image, ImageDraw, ImageFont
 
 device = 'CPU'
@@ -25,10 +25,10 @@ ab_name = ''
 if not os.path.exists(data_path):
     os.makedirs(data_path)
 
-with open('dict/word_dict.json', 'r') as file:
+with open('dict/word_dict.json', 'r', encoding="utf-8") as file:
     word_dict = json.load(file)
 
-with open('dict/num_dict.json', 'r') as fl:
+with open('dict/num_dict.json', 'r', encoding="utf-8") as fl:
     num_dict = json.load(fl)
 
 args=''
@@ -66,39 +66,54 @@ class TTSModel:
                     zip_ref.extractall(local_folder)
             self.model = Model(model_path=vosk_path, model_name="vosk-model-tts-ru-0.9-multi")
     
-    def synth_audio(self, text, speaker_id, rate):
+    def synth_audio(self, text, speaker_id):
         if self.ver == 5:
             np_audio = self.model.apply_tts(text,
                                               speaker=speaker_id,
-                                              sample_rate=48000)
+                                              sample_rate=48000
+                                              )
             np_audio = np_audio.detach().numpy()
             np_audio = (np_audio * 32767).astype(np.int16)
             return np_audio,48000
         else:
-            return Synth(model).synth_audio(text, speaker_id=speaker_id),22050
-
+            return Synth(self.model).synth_audio(text, speaker_id=speaker_id),22050
 
 
 synth = TTSModel()
 
-def load_accent_model(ver=1):
-    if ver == 1:
-        accentizer = RUAccent()
-        accentizer.load(
-            omograph_model_size='big_poetry',
-            use_dictionary=True,
-            device=device,
-            workdir="./models"
-        )
-        return accentizer
-    else:
-        class Accent:
-            def __init__(self):
-                self.accentizer = load_accentor()
-            
-            def process_all(self, text, params=None):
-                return self.accentizer(text)
-        return Accent()
+class ACCModel:
+    def __init__(self):
+        self.accentizer = None
+        self.ver = None
+
+    def load(self, ver):
+        self.ver = ver
+        if ver == 1:
+            self.accentizer = RUAccent()
+            self.accentizer.load(
+                omograph_model_size='big_poetry',
+                use_dictionary=True,
+                device=device,
+                workdir="./models"
+            )
+        else:
+            #url = 'https://github.com/snakers4/silero-stress/raw/refs/heads/master/src/silero_stress/data/accentor.pt'
+            silero_stress = 'accentor.pt'
+            silero_directory = 'models/silero_stress'
+            silero_filepath = os.path.join(now_dir, silero_directory, silero_stress)
+            self.accentizer = torch.package.PackageImporter(silero_filepath).load_pickle("accentor_models", "accentor")
+            quantized_weight = self.accentizer.homosolver.model.bert.embeddings.word_embeddings.weight.data.clone()
+            restored_weights = self.accentizer.homosolver.model.bert.scale * (quantized_weight - self.accentizer.homosolver.model.bert.zero_point)
+            self.accentizer.homosolver.model.bert.embeddings.word_embeddings.weight.data = restored_weights
+
+    def process_all(self, string, regexp):
+        if self.ver == 1:
+            return self.accentizer.process_all((string, regexp))
+        else:
+            return self.accentizer(string)
+
+accentizer = ACCModel()
+
 
 def get_spk_list(ver=10):
     spk_list = []

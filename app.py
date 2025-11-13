@@ -2,7 +2,7 @@ import os
 import json
 import gradio as gr
 import shutil
-from libs.utils import get_data_list,data_path,get_spk_list,load_accent_model,now_dir,synth
+from libs.utils import get_data_list,data_path,get_spk_list,accentizer,now_dir,synth
 from gr_tabs.parse_tab import parse_tab
 from gr_tabs.tts_tab import tts_tab
 from gr_tabs.settings_tab import settings_tab
@@ -11,7 +11,6 @@ from gr_tabs.cover_tab import cover_tab
 gr.set_static_paths(paths=[data_path,])
 
 sound_dir = os.path.join(now_dir, "sound")
-accentizer = None
 
 def refresh_data(ab_name):
     return {"value": ab_name, "choices": sorted(get_data_list()), "__type__": "update"}
@@ -61,18 +60,12 @@ accent_models_list = [
 ]
 
 def tts_model_load(ver=10, progress=gr.Progress()):
-    progress(0.8, desc="Загрузка модели...")
     synth.load(ver)
-    fin_text = "Модель успешно загружена!"
-    progress(1.0, desc=fin_text)
-    return fin_text, ver
+    return "Модель успешно загружена!", ver
 
 def acc_model_load(ver=1, progress=gr.Progress()):
-    global accentizer
-    progress(0.8, desc="Загрузка модели...")
-    accentizer = load_accent_model(ver)
+    accentizer.load(ver)
     fin_text = "Модель успешно загружена!"
-    progress(1.0, desc=fin_text)
     return fin_text,ver
 
 def change_tts_model(mver):

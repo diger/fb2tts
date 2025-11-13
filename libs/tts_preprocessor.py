@@ -1,7 +1,7 @@
 import re
 
 from libs.russian import normalize_russian
-from libs.utils import load_accent_model, word_dict, get_args
+from libs.utils import accentizer, word_dict, get_args
 
 cust_dict = word_dict['cust_dict']
 exc_abrs = word_dict['exc_abrs']
@@ -39,11 +39,8 @@ alphabet_map = {
 punctuation = r'[\s,.?!/)\'\]>]'
 
 class TextParse:
-    args = get_args()
-    def __init__(self):
-        self.accentizer = None
-        if self.args and self.args.accent:
-            self.accentizer = load_accent_model()
+    def __init__(self, accent):
+        self.accent = accent
 
     def preprocess(self, string):
         string = re.sub(r'°', 'градус', string)
@@ -56,8 +53,8 @@ class TextParse:
         string = self.replace_hrname(string)
         string = normalize_russian(string)
         string = self.garbage(string)
-        if self.accentizer:
-            string = self.accentizer.process_all(string,'\+\w+|\w+\+\w+')
+        if self.accent:
+            string = accentizer.process_all(string,'\+\w+|\w+\+\w+')
         string = re.sub('(\w)\s-\s(\w)', r'\1-\2', string)
 
         return string

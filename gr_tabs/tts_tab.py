@@ -101,7 +101,6 @@ def tts(ab_path, repl, spk_sel, sch_r, spk2_sel, sch_r2, back_sound_sel, mp3_bit
             np_audio, sr = synth.synth_audio(
                 text,
                 speaker,
-                rate
             )
             audio = AudioSegment(
                 np_audio.tobytes(),

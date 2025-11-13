@@ -4,14 +4,51 @@ import time
 import gradio as gr
 import pandas as pd
 from lxml import etree
-from libs.utils import now_dir,data_path,get_ab_name,set_args
+from libs.utils import now_dir,data_path,get_ab_name,set_args,word_dict
 from libs.tts_preprocessor import TextParse
-from libs.fix_fb2 import adopt_for_parse,parse_section,split
+from libs.fix_fb2 import adopt_for_parse,split
+
+list_of_snd = word_dict['list_of_snd']
+parser = None
 
 def stop_parse():
     global stop_parsing
     stop_parsing = True
     return "Прерываем выполнение..."
+
+def parse_section(tags,args):
+    p = etree.Element('line')
+    gnd = 0
+    if tags.text and tags.get('lang') is None:
+        if args.snd_ef and (sndml := sound_check(tags.text)):
+            for tt in etree.fromstring(sndml):
+                if tt.text or tt.tag == 'sound':
+                    p.append(tt)
+        else:
+            tags.text = parser.preprocess(tags.text)
+            p.append(tags)
+    elif args.gender:
+        p.set('gender', f'{male_fem(tags)}')
+    else:
+        p.append(tags)
+    if args.debug == 2: etree.dump(tags)
+    return p
+
+def sound_check(string):
+    snd =  '|'.join(list_of_snd.keys())
+    x = re.findall(rf'\b({snd})', string)
+    if len(x) >=1:
+        out_string = '<snd><p>'
+        string = re.sub(rf'\b({snd})(\W+|\W)', r'\1 ', string)
+        for word in string.split():
+            if list_of_snd.get(word):
+                out_string = out_string + f'</p><sound val="{list_of_snd[word]}"/><p>'
+            else:
+                out_string = out_string + parser.preprocess(word) + ' '
+        out_string = out_string + '</p></snd>'
+        return out_string
+
+    return False
 
 def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, progress=gr.Progress()):
 
@@ -30,12 +67,12 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, progress=gr.Progress
     args.debug = 0
     args.replace = repl
     args.tag = None
-    args.accent = accent
     args.gender = gender
     args.snd_ef = snd_ef
     set_args(args)
 
-    parser = TextParse()
+    global parser
+    parser = TextParse(accent)
 
     title = 1
     desc = adopt_for_parse(args)

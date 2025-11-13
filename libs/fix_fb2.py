@@ -4,12 +4,9 @@ import base64
 import pymorphy3
 
 from lxml import etree
-from libs.utils import add_text_cover, word_dict
-from libs.tts_preprocessor import TextParse
+from libs.utils import add_text_cover
 
 morph = pymorphy3.MorphAnalyzer()
-list_of_snd = word_dict['list_of_snd']
-parser = TextParse()
 
 def split(arr, size):
     arrs = []
@@ -19,24 +16,6 @@ def split(arr, size):
         arr   = arr[size:]
     arrs.append(arr)
     return arrs
-
-def parse_section(tags,args):
-    p = etree.Element('line')
-    gnd = 0
-    if tags.text and tags.get('lang') is None:
-        if args.snd_ef and (sndml := sound_check(tags.text)):
-            for tt in etree.fromstring(sndml):
-                if tt.text or tt.tag == 'sound':
-                    p.append(tt)
-        else:
-            tags.text = parser.preprocess(tags.text)
-            p.append(tags)
-    elif args.gender:
-        p.set('gender', f'{male_fem(tags)}')
-    else:
-        p.append(tags)
-    if args.debug == 2: etree.dump(tags)
-    return p
 
 def male_fem(tags):
     male = 0
@@ -56,22 +35,6 @@ def male_fem(tags):
         return 1
     else:
         return -1
-
-def sound_check(string):
-    snd =  '|'.join(list_of_snd.keys())
-    x = re.findall(rf'\b({snd})', string)
-    if len(x) >=1:
-        out_string = '<snd><p>'
-        string = re.sub(rf'\b({snd})(\W+|\W)', r'\1 ', string)
-        for word in string.split():
-            if list_of_snd.get(word):
-                out_string = out_string + f'</p><sound val="{list_of_snd[word]}"/><p>'
-            else:
-                out_string = out_string + parser.preprocess(word) + ' '
-        out_string = out_string + '</p></snd>'
-        return out_string
-
-    return False
 
 def lang_check(string):
     lang = 'ru'
