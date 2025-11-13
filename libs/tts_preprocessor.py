@@ -39,8 +39,9 @@ alphabet_map = {
 punctuation = r'[\s,.?!/)\'\]>]'
 
 class TextParse:
-    def __init__(self, accent):
+    def __init__(self, accent, single_vowel=None):
         self.accent = accent
+        self.single_vowel = single_vowel
 
     def preprocess(self, string):
         string = re.sub(r'°', 'градус', string)
@@ -56,6 +57,8 @@ class TextParse:
         if self.accent:
             string = accentizer.process_all(string,'\+\w+|\w+\+\w+')
         string = re.sub('(\w)\s-\s(\w)', r'\1-\2', string)
+        if self.single_vowel:
+            string = self.rm_pl_single_vowel(string)
 
         return string
 
@@ -149,3 +152,22 @@ class TextParse:
             else:
                 int_val += rom_val[s[i]]
         return int_val
+
+    def rm_pl_single_vowel(self, text):
+        def process_word(match):
+            word = match.group()
+            
+            # Проверяем, есть ли в слове плюс перед гласной
+            if '+' in word:
+                # Находим все гласные в слове
+                vowels = re.findall(r'[аеёиоуыэюя]', word, flags=re.IGNORECASE)
+                
+                # Если гласная только одна И есть плюс перед гласной
+                if len(vowels) == 1:
+                    # Удаляем все плюсы из слова
+                    return word.replace('+', '')
+            
+            return word
+        
+        # Ищем все слова (включая те, что содержат +)
+        return re.sub(r'[\+а-яё]+\b', process_word, text, flags=re.IGNORECASE)

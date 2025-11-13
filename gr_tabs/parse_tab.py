@@ -50,7 +50,7 @@ def sound_check(string):
 
     return False
 
-def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, progress=gr.Progress()):
+def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, single_vowel, progress=gr.Progress()):
 
     global stop_parsing
     stop_parsing = False
@@ -72,7 +72,7 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, progress=gr.Progress
     set_args(args)
 
     global parser
-    parser = TextParse(accent)
+    parser = TextParse(accent,single_vowel)
 
     title = 1
     desc = adopt_for_parse(args)
@@ -220,6 +220,7 @@ def parse_tab(ab_path,acc_state):
         with gr.Row():
             snd_ef = gr.Checkbox(label="Озвучить события", value=True)
             gender = gr.Checkbox(label="Определение пола")
+            single_vowel = gr.Checkbox(label="мАсквич")
             multilang = gr.Checkbox(label="Несколько языков", interactive=False)
             profanity = gr.Checkbox(label="Запикать мат", interactive=False)
         with gr.Row():
@@ -254,7 +255,7 @@ def parse_tab(ab_path,acc_state):
             outputs=pr_status
         ).then(
             fn=parse_fb2,
-            inputs=[ab_path,repl,multilang,gender,snd_ef,accent],
+            inputs=[ab_path,repl,multilang,gender,snd_ef,accent,single_vowel],
             outputs=[df_output, pr_status],
             show_progress_on=pr_status
         )
