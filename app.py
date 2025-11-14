@@ -2,6 +2,7 @@ import os
 import json
 import gradio as gr
 import shutil
+import argparse
 from libs.utils import get_data_list,data_path,get_spk_list,accentizer,now_dir,synth
 from gr_tabs.parse_tab import parse_tab
 from gr_tabs.tts_tab import tts_tab
@@ -11,6 +12,13 @@ from gr_tabs.cover_tab import cover_tab
 gr.set_static_paths(paths=[data_path,])
 
 sound_dir = os.path.join(now_dir, "sound")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--port", type=int, default=7860, help="Порт для запуска")
+parser.add_argument("--share", action="store_true", help="Создать публичную ссылку")
+parser.add_argument("--debug", action="store_true", help="Включить режим отладки")
+parser.add_argument("--server-name", type=str, default="0.0.0.0", help="Имя сервера")
+args = parser.parse_args()
 
 def refresh_data(ab_name):
     return {"value": ab_name, "choices": sorted(get_data_list()), "__type__": "update"}
@@ -213,9 +221,12 @@ with gr.Blocks(theme=custom_theme, title="🇷🇺") as App:
         outputs=accent_button
     )
 
-App.launch(
-    share=False,
-    server_name="0.0.0.0",
-    allowed_paths=[sound_dir],
-    favicon_path='libs/vosk.ico'
-)
+if __name__ == "__main__":
+    App.launch(
+        server_name=args.server_name,
+        server_port=args.port,
+        share=args.share,
+        debug=args.debug,
+        allowed_paths=[sound_dir],
+        favicon_path='libs/vosk.ico'
+    )

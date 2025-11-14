@@ -7,7 +7,6 @@ import torch
 import numpy as np
 from io import BytesIO
 from vosk_tts import Model, Synth
-from silero import silero_tts
 from ruaccent import RUAccent
 from PIL import Image, ImageDraw, ImageFont
 
