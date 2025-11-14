@@ -10,6 +10,7 @@ import concurrent.futures
 import threading
 from functools import partial
 from pydub import effects, AudioSegment
+from pydub.utils import mediainfo
 from libs.utils import get_spk_list, convert, synth
 
 now_dir = os.getcwd()
@@ -207,14 +208,14 @@ def get_files_list(ab_name):
         files=[x.split('.')[0] for x in files]
         for file_name in sorted(files, key=float):
             full_path = os.path.join(d_path, f"{file_name}.mp3")
-            audio = AudioSegment.from_file(full_path, format="mp3")
+            info = mediainfo(full_path)
             size = os.path.getsize(full_path)
             size_in_mb = round(size / (1024 * 1024), 2)
             new_row = {
                 "Audio": f'<audio controls src="/gradio_api/file=data/{ab_name}/mp3/{file_name}.mp3"></audio>',
                 "Имя файла": f"{file_name}.mp3",
                 "Размер": f"{size_in_mb} Mb.",
-                "Продолжительность": convert(audio.duration_seconds)
+                "Продолжительность": convert(float(info['duration']))
             }
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     return df
