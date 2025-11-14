@@ -6,7 +6,8 @@ import pandas as pd
 from lxml import etree
 from libs.utils import now_dir,data_path,get_ab_name,set_args,word_dict
 from libs.tts_preprocessor import TextParse
-from libs.fix_fb2 import adopt_for_parse,split
+from libs.fix_fb2 import adopt_for_parse
+from libs.russian import male_fem
 
 list_of_snd = word_dict['list_of_snd']
 parser = None
@@ -25,10 +26,10 @@ def parse_section(tags,args):
                 if tt.text or tt.tag == 'sound':
                     p.append(tt)
         else:
+            if args.gender:
+                tags.set('gender', f'{male_fem(tags.text)}')
             tags.text = parser.preprocess(tags.text)
             p.append(tags)
-    elif args.gender:
-        p.set('gender', f'{male_fem(tags)}')
     else:
         p.append(tags)
     if args.debug == 2: etree.dump(tags)
@@ -115,18 +116,14 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, single_vowel, progre
                     if os.path.exists(f'{xml_path}/{title}_{s_title}.xml') and not args.replace:
                         print(f'{title}_{s_title}.xml File exist!')
                     else:
-                        txt_male = 0
                         for tags in sect:
                             if tags.tag == 'title' and s_title == 1 and sec_title is not None:
                                 tags.text = sec_title.text + '. ' + tags.text
                             for ts in parse_section(tags,args):
-                                if (gnd := ts.get('gender')) is not None:
-                                    txt_male = txt_male + int(gnd)
                                 ntree.append(ts)
                                 if args.debug == '1': etree.dump(ts)
-                        ntree.set('gender','masc')
-                        if txt_male < 0:
-                            ntree.set('gender','femn')
+                        #ntree.set('gender','masc')
+                        male_fem(ntree)
                         tree = etree.ElementTree(ntree)
                         tree.write(f'{xml_path}/{title}_{s_title}.xml', encoding='utf-8', pretty_print=True)
                     s_title += 1
@@ -147,16 +144,10 @@ def parse_fb2(ab_path, repl, mltlg, gender, snd_ef, accent, single_vowel, progre
                 if os.path.exists(f'{xml_path}/{title}.xml') and not args.replace:
                     gr.Info(f'{title}.xml File exist!', duration=3)
                 else:
-                    txt_male = 0
                     for tags in elem:
                         for ts in parse_section(tags,args):
-                            if (gnd := ts.get('gender')) is not None:
-                                txt_male = txt_male + int(gnd)
                             ntree.append(ts)
                             if args.debug == '1': etree.dump(ts)
-                    ntree.set('gender','masc')
-                    if txt_male < 0:
-                        ntree.set('gender','femn')
                     ntree = etree.ElementTree(ntree)
                     ntree.write(f'{xml_path}/{title}.xml', encoding='utf-8', pretty_print=True)
             new_row = {

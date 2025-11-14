@@ -1,14 +1,10 @@
 import os
 import re
 import base64
-import pymorphy3
-
 from lxml import etree
 from libs.utils import add_text_cover
 
-morph = pymorphy3.MorphAnalyzer()
-
-def split(arr, size):
+def split_by_size(arr, size):
     arrs = []
     while len(arr) > size:
         pice = arr[:size]
@@ -16,25 +12,6 @@ def split(arr, size):
         arr   = arr[size:]
     arrs.append(arr)
     return arrs
-
-def male_fem(tags):
-    male = 0
-    female = 0
-    if tags.text:
-        cl_text = garbage(tags.text)
-        cl_text = re.sub( ',|\!|\?|\.', ' ', cl_text)
-        for item in cl_text.split(' '):
-            ch_word = item.strip()
-            p = morph.parse(ch_word)[0]
-            if p.tag.POS == 'VERB' and p.tag.tense == 'past':
-                if p.tag.gender == 'masc':
-                    male += 1
-                elif p.tag.gender == 'femn':
-                    female += 1
-    if male >= female:
-        return 1
-    else:
-        return -1
 
 def lang_check(string):
     lang = 'ru'
@@ -77,7 +54,7 @@ def adopt_for_parse(args):
                             parent=pp.getparent()
                             parent.remove(pp)
                 else:
-                    for cut_elem in split(elem, 250):
+                    for cut_elem in split_by_size(elem, 250):
                         newsect = etree.Element('section')
                         for pp in list(cut_elem):
                             newsect.append(pp)

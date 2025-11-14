@@ -346,3 +346,17 @@ def normalize_russian(text):
     text = normalize_number_without_text(text)
     text = cyrrilize(text)
     return text
+
+def male_fem(text):
+    male = 0
+    female = 0
+    for item in text:
+        p = morph.parse(ch_word)[0]
+        if p.tag.POS == 'VERB' and p.tag.tense == 'past':
+            if p.tag.gender == 'masc':
+                male += 1
+            elif p.tag.gender == 'femn':
+                        female += 1
+    if female > male:
+        return 'femn'
+    return 'masc'
