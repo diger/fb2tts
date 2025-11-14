@@ -47,7 +47,7 @@ def toggle_tab(ab_path):
     return gr.Tabs(visible=True, selected=0),ab_path
 
 def put_accents(string):
-    string = accentizer.process_all(string,'\+\w+|\w+\+\w+')
+    string = accentizer.process_accent(string,'\+\w+|\w+\+\w+')
     return string
 
 def text_to_audio(string, spk, rate=1, noise=None):
@@ -70,10 +70,8 @@ accent_models_list = [
 def tts_model_load(ver, progress=gr.Progress()):
     return synth.load(ver)
 
-def acc_model_load(ver=1, progress=gr.Progress()):
-    accentizer.load(ver)
-    fin_text = "Модель успешно загружена!"
-    return fin_text,ver
+def acc_model_load(ver, progress=gr.Progress()):
+    return accentizer.load(ver)
 
 def change_tts_model(mver):
     if mver is not None:
@@ -123,7 +121,7 @@ with gr.Blocks(theme=custom_theme, title="🇷🇺") as App:
         acc_sel.select(
             acc_model_load,
             inputs=acc_sel,
-            outputs=[acc_status,acc_state],
+            outputs=[acc_state,acc_status],
             show_progress_on=acc_status
         )
     with gr.Tabs():

@@ -55,7 +55,7 @@ class TextParse:
         string = normalize_russian(string)
         string = self.garbage(string)
         if self.accent:
-            string = accentizer.process_all(string,'\+\w+|\w+\+\w+')
+            string = accentizer.process_accent(string,'\+\w+|\w+\+\w+')
         string = re.sub('(\w)\s-\s(\w)', r'\1-\2', string)
         if self.single_vowel:
             string = self.rm_pl_single_vowel(string)
