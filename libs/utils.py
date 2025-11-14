@@ -1,7 +1,7 @@
 import os
 import re
 import json
-import urllib.request
+import requests
 import zipfile
 import torch
 import numpy as np
@@ -50,21 +50,28 @@ class TTSModel:
                 os.makedirs(silero_directory, exist_ok=True)
                 print(f'Download silero model v5')
                 model_url = "https://models.silero.ai/models/tts/ru/v5_ru.pt"
-                urllib.request.urlretrieve(model_url,silero_filepath)
+                m, status = self.download_model(model_url,silero_filepath)
+                if m is None:
+                    return m, status
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = torch.package.PackageImporter(silero_filepath).load_pickle("tts_models", "model")
             self.model.to(device)
+            return ver, "Модель успешно загружена!"
         else:
             vosk_path = f'models/vosk-model-tts-ru-0.{ver}-multi'
+            vosk_filepath = os.path.join(now_dir, local_folder, f"vosk-model-tts-ru-0.{ver}-multi.zip")
             os.makedirs(local_folder, exist_ok=True)
-            if not os.path.exists(f'{now_dir}/{vosk_path}'):
+            if not os.path.isfile(vosk_filepath) and not os.path.exists(f'{now_dir}/{vosk_path}'):
                 print(f'Download vosk-model 0.{ver}')
                 model_url = f"https://alphacephei.com/vosk/models/vosk-model-tts-ru-0.{ver}-multi.zip"
-                with urllib.request.urlopen(model_url) as response:
-                    zip_content = BytesIO(response.read())
-                with zipfile.ZipFile(zip_content, 'r') as zip_ref:
+                m, status = self.download_model(model_url,vosk_filepath)
+                if m is None:
+                    return m, status
+            elif not os.path.exists(f'{now_dir}/{vosk_path}'):
+                with zipfile.ZipFile(vosk_filepath, 'r') as zip_ref:
                     zip_ref.extractall(local_folder)
             self.model = Model(model_path=vosk_path, model_name="vosk-model-tts-ru-0.9-multi")
+            return ver, "Модель успешно загружена!"
     
     def synth_audio(self, text, speaker_id):
         if self.ver == 5:
@@ -77,6 +84,28 @@ class TTSModel:
             return np_audio,48000
         else:
             return Synth(self.model).synth_audio(text, speaker_id=speaker_id),22050
+
+    def download_model(self, model_url, target_path):
+        try:
+            response = requests.get(model_url, stream=True, timeout=5)
+            response.raise_for_status()
+            expected_size = int(response.headers.get('content-length', 0))
+            with open(target_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            actual_size = os.path.getsize(target_path)
+            if actual_size > 0 and (expected_size == 0 or actual_size == expected_size):
+                return self.ver, True
+            else:
+                if os.path.exists(target_path):
+                    os.remove(target_path)
+                return None, 'Error: Размер неверный!'
+
+        except Exception as e:
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            return None, f'Error: {e}'
 
 
 synth = TTSModel()

@@ -59,9 +59,8 @@ accent_models_list = [
     ('Silero stress', 2),
 ]
 
-def tts_model_load(ver=10, progress=gr.Progress()):
-    synth.load(ver)
-    return "Модель успешно загружена!", ver
+def tts_model_load(ver, progress=gr.Progress()):
+    return synth.load(ver)
 
 def acc_model_load(ver=1, progress=gr.Progress()):
     accentizer.load(ver)
@@ -69,15 +68,16 @@ def acc_model_load(ver=1, progress=gr.Progress()):
     return fin_text,ver
 
 def change_tts_model(mver):
-    sp_list = get_spk_list(mver)
-    speaker = sp_list[0]
-    if isinstance(speaker, tuple):
-        speaker = sp_list[0][1]
-    return (
-        {"value": speaker, "choices": sp_list, "__type__": "update"},
-        {"interactive": True, "__type__": "update"}, 
-        {"interactive": True, "__type__": "update"}
-    )
+    if mver is not None:
+        sp_list = get_spk_list(mver)
+        speaker = sp_list[0]
+        if isinstance(speaker, tuple):
+            speaker = sp_list[0][1]
+        return (
+            {"value": speaker, "choices": sp_list, "__type__": "update"},
+            {"interactive": True, "__type__": "update"}, 
+            {"interactive": True, "__type__": "update"}
+        )
 
 def change_acc_model(mver):
     return {"interactive": True, "__type__": "update"}
@@ -109,7 +109,7 @@ with gr.Blocks(theme=custom_theme, title="🇷🇺") as App:
         tts_sel.select(
             tts_model_load,
             inputs=tts_sel,
-            outputs=[tts_status,tts_state],
+            outputs=[tts_state,tts_status],
             show_progress_on=tts_status
         )
         acc_sel.select(
@@ -122,9 +122,9 @@ with gr.Blocks(theme=custom_theme, title="🇷🇺") as App:
         with gr.TabItem(label="Demo TTS"):
             with gr.Row():
                 spk_sel = gr.Dropdown(
-                    value=0,
+                    value='',
                     label='Выбрать голос',
-                    choices=get_spk_list(),
+                    choices=[''],
                     interactive=True,
                 )
                 speech_rate = gr.Slider(
